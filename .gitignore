@@ -11,4 +11,4 @@ chroma_db/
 
 #Dummy Files
 scratch.py
-images/
+*.json
