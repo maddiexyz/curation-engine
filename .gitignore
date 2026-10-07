@@ -1,60 +1,14 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual Environments
+#Env
 venv/
-.venv/
-ENV/
-env/
-env.bak/
-venv.bak/
-
-# Environment variables and credentials
 .env
-.env.*
-!.env.example
 
-# IDEs and Editors
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
+#Model
+*.pt
+*.ts
 
-# Operating System files
-.DS_Store
-Thumbs.db
-desktop.ini
+#VectorDB
+chroma_db/
 
-# Logs and databases
-*.log
-*.sqlite3
-
-#Datasets
-robot-files/
-sample-jsons/
+#Dummy Files
+scratch.py
+images/

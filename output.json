@@ -1,0 +1,54 @@
+{
+    "Screenshot 2026-10-07 171921.png": {
+        "overall_aesthetic": "casual streetwear",
+        "garments": [
+            {
+                "category": "topwear",
+                "item_type": "graphic hoodie",
+                "title": "Superdry Logo Print Cotton Blend Hoodie",
+                "search_query": "Superdry white hoodie black logo pullover sweatshirt",
+                "brand": "Superdry",
+                "subject_or_graphic": "Superdry logo",
+                "primary_color": "white",
+                "secondary_colors": [
+                    "black"
+                ],
+                "material_guess": "cotton blend fleece",
+                "pattern": "solid",
+                "fit_style": "regular fit",
+                "distinguishing_features": [
+                    "drawstring hood",
+                    "kangaroo pocket",
+                    "ribbed cuffs",
+                    "logo print on chest"
+                ]
+            }
+        ]
+    },
+    "Screenshot 2026-10-07 171935.png": {
+        "overall_aesthetic": "casual streetwear",
+        "garments": [
+            {
+                "category": "footwear",
+                "item_type": "high-top sneakers",
+                "title": "Converse Chuck 70 Classic Black High Top Sneakers",
+                "search_query": "Converse Chuck 70 black high top canvas sneakers",
+                "brand": "Converse",
+                "subject_or_graphic": null,
+                "primary_color": "black",
+                "secondary_colors": [
+                    "white"
+                ],
+                "material_guess": "canvas",
+                "pattern": "solid",
+                "fit_style": null,
+                "distinguishing_features": [
+                    "white rubber toe cap",
+                    "white contrast stitching",
+                    "lace-up closure",
+                    "all-star ankle patch"
+                ]
+            }
+        ]
+    }
+}
