@@ -1,77 +1,153 @@
+import os
+import time
+from typing import Any, Optional
 from pymongo import MongoClient
-import requests
+from pymongo.collection import Collection
+from pymongo.database import Database
+from pymongo.operations import SearchIndexModel
 
-from dotenv import load_dotenv
 
-load_dotenv()
+# ---------------------------------------------------------------------
+# 1. Get DB Instance
+# ---------------------------------------------------------------------
+def get_db(
+    connection_string: Optional[str] = None,
+    db_name: str = "curation-engine",
+) -> Database:
+    """Connects to MongoDB and returns a Database instance."""
+    uri = connection_string or os.getenv(
+        "MONGO_CONNECTION_STRING",
+        "mongodb://localhost:27017/?directConnection=true",
+    )
+    client: MongoClient = MongoClient(uri)
+    return client[db_name]
 
-MONGO_CONNECTION_STRING="mongodb://localhost:27017/?directConnection=true"
 
-client = MongoClient(MONGO_CONNECTION_STRING)
+# ---------------------------------------------------------------------
+# 2. Get Collection
+# ---------------------------------------------------------------------
+def get_collection(
+    db: Database,
+    collection_name: str = "catalog",
+) -> Collection:
+    """Returns a specific collection from the database instance."""
+    return db[collection_name]
 
-db = client["curation-engine"]
-collection = db["catalog"]
 
-# from pymongo.operations import SearchIndexModel
+# ---------------------------------------------------------------------
+# 3. Create Index
+# ---------------------------------------------------------------------
+def create_vector_index(
+    collection: Collection,
+    index_name: str = "catalog_vector_index",
+    dimensions: int = 512,
+    similarity: str = "cosine",
+) -> None:
+    """Submits a vectorSearch index definition for text and image embeddings."""
+    existing_indexes = [
+        idx.get("name")
+        for idx in collection.list_search_indexes()
+        if "name" in idx
+    ]
+    if index_name in existing_indexes:
+        return
 
-# index = SearchIndexModel(
-#     definition={
-#         "fields": [
-#             {"type": "vector", "path": "image_embedding", "numDimensions": 512, "similarity": "cosine"},
-#             {"type": "vector", "path": "text_embedding", "numDimensions": 512, "similarity": "cosine"},
-#         ]
-#     },
-#     name="catalog_vector_index",
-#     type="vectorSearch",
-# )
+    index_model = SearchIndexModel(
+        definition={
+            "fields": [
+                {
+                    "type": "vector",
+                    "path": "image_embedding",
+                    "numDimensions": dimensions,
+                    "similarity": similarity,
+                },
+                {
+                    "type": "vector",
+                    "path": "text_embedding",
+                    "numDimensions": dimensions,
+                    "similarity": similarity,
+                },
+            ]
+        },
+        name=index_name,
+        type="vectorSearch",
+    )
+    collection.create_search_index(index_model)
 
-# collection.create_search_index(index)
 
-# import time
+# ---------------------------------------------------------------------
+# 4. Check Index Ready
+# ---------------------------------------------------------------------
+def is_index_ready(
+    collection: Collection,
+    index_name: str = "catalog_vector_index",
+) -> bool:
+    """Checks if the search index exists and is currently queryable."""
+    indexes = list(collection.list_search_indexes(index_name))
+    if indexes and indexes[0].get("queryable"):
+        return True
+    return False
 
-# while True:
-#     indexes = list(collection.list_search_indexes("catalog_vector_index"))
-#     if indexes and indexes[0].get("queryable"):
-#         break
-#     time.sleep(2)
-# print("Index is ready")
 
-CLIP_URL = "http://localhost:8000"
+def wait_for_index_ready(
+    collection: Collection,
+    index_name: str = "catalog_vector_index",
+    timeout: int = 60,
+    poll_interval: int = 2,
+) -> bool:
+    """Polls until the vector search index is queryable or timeout expires."""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if is_index_ready(collection, index_name):
+            return True
+        time.sleep(poll_interval)
+    return False
 
-# res = requests.post(f"{CLIP_URL}/embed/text", json={"text": "Superdry white hoodie black logo pullover sweatshirt"})
-# text_vector = res.json()["vector"]
 
-# with open("sweatshirt.png", "rb") as img:
-#     res = requests.post(f"{CLIP_URL}/embed/image", files={"file": img})
-# image_vector = res.json()["vector"]
+# ---------------------------------------------------------------------
+# 5. Insert Item
+# ---------------------------------------------------------------------
+def insert_item(
+    collection: Collection,
+    item_document: dict[str, Any],
+) -> str:
+    """Inserts an item into the collection and returns the inserted string ID."""
+    result = collection.insert_one(item_document)
+    return str(result.inserted_id)
 
-# result = collection.insert_one(
-#     {
-#         "title" : "Superdry Logo Print Cotton Blend Hoodie",
-#         "image_embedding" : image_vector,
-#         "text_embedding": text_vector 
-#     }
-# )
-# print(result.inserted_id)
 
-def query_vector(collection, index_name, field, vector, limit=5):
-    return list(collection.aggregate([
+# ---------------------------------------------------------------------
+# 6. Query
+# ---------------------------------------------------------------------
+def query_vector(
+    collection: Collection,
+    vector: list[float],
+    field: str = "text_embedding",
+    index_name: str = "catalog_vector_index",
+    limit: int = 5,
+    filter_criteria: Optional[dict[str, Any]] = None,
+) -> list[dict[str, Any]]:
+    """Executes a $vectorSearch aggregation pipeline against the collection."""
+    search_stage: dict[str, Any] = {
+        "index": index_name,
+        "path": field,
+        "queryVector": vector,
+        "numCandidates": limit * 15,
+        "limit": limit,
+    }
+
+    if filter_criteria:
+        search_stage["filter"] = filter_criteria
+
+    pipeline = [
+        {"$vectorSearch": search_stage},
         {
-            "$vectorSearch": {
-                "index": index_name,
-                "path": field,
-                "queryVector": vector,
-                "numCandidates": limit * 15,
-                "limit": limit
+            "$project": {
+                "score": {"$meta": "vectorSearchScore"},
+                "text_embedding": 0,
+                "image_embedding": 0,
             }
         },
-        {"$project": {"score": {"$meta": "vectorSearchScore"}, "text_embedding": 0, "image_embedding": 0}}
-    ]))
+    ]
 
-
-
-res = requests.post(f"{CLIP_URL}/embed/text", json={"text": "white hoodie"})
-text_vector = res.json()["vector"]
-
-results = query_vector(collection, "catalog_vector_index", "text_embedding", text_vector)
-print(results)
+    return list(collection.aggregate(pipeline))

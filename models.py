@@ -45,23 +45,6 @@ class ApparelFeatures(BaseModel):
     search_query: str = Field(description="4-7 concise keywords optimized for catalog retrieval.")
 
 
-# =================================================================
-# FUNCTION 2: MULTI-ITEM OUTFIT TAGGING & SCENE SEGMENTATION
-# Use when analyzing a complete photo, lookbook, or street snap.
-# =================================================================
-
-class TaggedApparel(BaseModel):
-    box_2d: list[int] = Field(
-        description="Bounding box coordinates formatted as [ymin, xmin, ymax, xmax] on a 0-1000 scale."
-    )
-    apparel_focus: Literal["primary", "secondary", "tertiary"] = Field(
-        description=(
-            "'primary': Main hero garment. "
-            "'secondary': Supporting baseline clothing. "
-            "'tertiary': Accents and accessories (hat, belt, glasses, bag)."
-        )
-    )
-
 # ==========================================
 # 3. BASE APPAREL MODEL
 # ==========================================

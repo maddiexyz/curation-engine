@@ -4,14 +4,9 @@ venv/
 __pycache__
 
 #Model
-*.pt
-*.ts
-
-#VectorDB
-chroma_db/
+models/
 
 #Dummy Files
 scratch.py
-*.json
-*.png
+images/
 notes.md
