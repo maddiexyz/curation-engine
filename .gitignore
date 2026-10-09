@@ -1,6 +1,7 @@
 #Env
 venv/
 .env
+__pycache__
 
 #Model
 *.pt
@@ -12,3 +13,5 @@ chroma_db/
 #Dummy Files
 scratch.py
 *.json
+*.png
+notes.md

@@ -1,8 +1,10 @@
+from typing import Literal
+from datetime import datetime
 from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, Field
+from urllib.parse import urlparse
+from pydantic import BaseModel, Field, HttpUrl, computed_field
 
-#APPAREL ITEMS
 
 class Category(str, Enum):
     TOPWEAR = "topwear"
@@ -12,74 +14,52 @@ class Category(str, Enum):
     FOOTWEAR = "footwear"
     ACCESSORY = "accessory"
 
-class ApparelItem(BaseModel):
-    category: Category = Field(
-        description="High-level garment category."
-    )
-    item_type: str = Field(
-        description="Specific garment type, e.g., 'pleated midi skirt', 'cargo pants', 'chelsea boots', 'graphic hoodie'."
-    )
-    # --- Added for Search & Indexing ---
-    title: str = Field(
-        description="Canonical e-commerce title: [Brand] [Subject/Graphic if any] [Key Detail] [Item Type]."
-    )
-    search_query: str = Field(
-        description="Targeted 4-7 keyword query optimized for e-commerce search engines."
-    )
-    brand: Optional[str] = Field(
-        default=None,
-        description="Visible or recognizable brand/maker (e.g. 'Levi\\'s', 'Adidas', 'Nike'). None if unbranded or uncertain.",
-    )
-    subject_or_graphic: Optional[str] = Field(
-        default=None,
-        description="Depicted artwork, sports team/federation, band, character, or prominent text/slogan. None if plain.",
-    )
-    # -----------------------------------
-    primary_color: str = Field(description="Dominant color")
+
+class ApparelFeatures(BaseModel):
+    category: Category = Field(description="High-level garment category.")
+    item_type: str = Field(description="Specific garment type.")
+    title: str = Field(description="Canonical e-commerce title.")
+    search_query: str = Field(description="4-7 targeted search keywords.")
+    brand: Optional[str] = Field(default=None)
+    subject_or_graphic: Optional[str] = Field(default=None)
+    primary_color: str = Field(description="Dominant color.")
     secondary_colors: list[str] = Field(default_factory=list)
-    material_guess: Optional[str] = Field(
-        default=None,
-        description="Observed fabric/texture, e.g., denim, corduroy, leather, silk, ribbed knit.",
+    material_guess: Optional[str] = Field(default=None)
+    pattern: Optional[str] = Field(default=None)
+    fit_style: Optional[str] = Field(default=None)
+    distinguishing_features: list[str] = Field(default_factory=list)
+    overall_aesthetic: Optional[str] = Field(default=None)
+    box_2d: list[int] = Field(
+        description="Bounding box coordinates for this garment formatted as [ymin, xmin, ymax, xmax] on a 0-1000 normalized integer scale."
     )
-    pattern: Optional[str] = Field(
-        default=None,
-        description="Visual pattern: solid, striped, plaid, floral, houndstooth, etc.",
-    )
-    fit_style: Optional[str] = Field(
-        default=None,
-        description="Silhouettes such as cropped, oversized, slim, flared, high-waisted.",
-    )
-    distinguishing_features: list[str] = Field(
-        default_factory=list,
-        description="Specific visible details: zips, patches, distressing, logo placements, cuff style.",
+    visual_prominence: Literal["primary", "secondary", "background_prop"] = Field(
+        description=(
+            "Classify the role of this item in the composition: "
+            "'primary' if it is the central hero garment being showcased, "
+            "'secondary' if it is a supporting styling piece (e.g. beanie, sunglasses, socks, belt), "
+            "'background_prop' if it is barely visible."
+        )
     )
 
-    def __str__(self) -> str:
-        descriptors = [
-            self.brand,
-            self.fit_style.title() if self.fit_style else None,
-            self.pattern.title() if self.pattern and self.pattern.lower() != "solid" else None,
-            self.primary_color.lower(),
-            self.material_guess.lower() if self.material_guess else None,
-            self.item_type.lower(),
-        ]
 
-        main_phrase = " ".join(word for word in descriptors if word)
+class CatalogProduct(ApparelFeatures):
+    product_url: HttpUrl = Field(description="URL to the product page.")
+    image_url: HttpUrl = Field(description="Direct URL to the product image.")
+    source_title: Optional[str] = Field(default=None, description="Original raw title from the source platform.")
 
-        details = []
-        if self.subject_or_graphic:
-            details.append(f"graphic: {self.subject_or_graphic}")
-        if self.secondary_colors:
-            details.append(f"accents: {', '.join(self.secondary_colors)}")
-        if self.distinguishing_features:
-            details.append(f"details: {', '.join(self.distinguishing_features)}")
+    @computed_field
+    @property
+    def seller_domain(self) -> str:
+        """Derived automatically from product_url without storing redundant state."""
+        return urlparse(str(self.product_url)).netloc
 
-        details_suffix = f" ({'; '.join(details)})" if details else ""
 
-        return f"[{self.category.value}] {main_phrase}{details_suffix}"
-
-class OutfitAnalysis(BaseModel):
-    overall_aesthetic: str = Field(
-        description="General style vibe: e.g., streetwear, business casual, avant-garde, athleisure."
-    )
-    garments: list[ApparelItem]
+class ApparelSearchQuery(BaseModel):
+    raw_query_text: Optional[str] = None
+    query_image_path: Optional[str] = None
+    inferred_features: Optional[ApparelFeatures] = None
+    
+    # Metadata filters
+    filter_category: Optional[Category] = None
+    filter_seller_domain: Optional[str] = None
+    filter_brand: Optional[str] = None
