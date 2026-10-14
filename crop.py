@@ -2,6 +2,8 @@ from typing import Any, Union
 from huggingface_hub import hf_hub_download
 from PIL import Image
 from ultralytics import YOLO
+import math
+import numpy as np
 
 
 def load_clothing_model(
@@ -13,81 +15,80 @@ def load_clothing_model(
     return YOLO(model_path)
 
 
+def rank_prominence(
+    conf: float,
+    box: list[int],
+    img_w: int,
+    img_h: int,
+    w_conf: float = 0.40,
+    w_area: float = 0.35,
+    w_pos: float = 0.25,
+) -> float:
+    """Calculates a visual prominence score using confidence, area, and centrality."""
+    x1, y1, x2, y2 = box
+    box_w = max(0, x2 - x1)
+    box_h = max(0, y2 - y1)
+
+    # 1. Area ratio (relative to full image)
+    img_area = img_w * img_h
+    area_ratio = (box_w * box_h) / img_area if img_area > 0 else 0.0
+    # Optional: apply sqrt to avoid extreme skew toward massive background boxes
+    norm_area = min(1.0, math.sqrt(area_ratio))
+
+    # 2. Centrality (distance from box center to image center)
+    box_cx, box_cy = x1 + box_w / 2.0, y1 + box_h / 2.0
+    img_cx, img_cy = img_w / 2.0, img_h / 2.0
+
+    dist = math.hypot(box_cx - img_cx, box_cy - img_cy)
+    max_dist = math.hypot(img_cx, img_cy)
+    centrality = max(0.0, 1.0 - (dist / max_dist)) if max_dist > 0 else 1.0
+
+    # 3. Weighted composite score
+    return (w_conf * conf) + (w_area * norm_area) + (w_pos * centrality)
+
+
 def generate_top_k_crops(
-    image_source: Union[str, Image.Image],
+    image_source: Union[str, Image.Image, np.ndarray],
     model: YOLO,
-    k: int = 3,
+    k: int = 5,
     conf_threshold: float = 0.25,
-    show_crops: bool = False
 ) -> list[dict[str, Any]]:
-    """Runs garment detection and extracts the top-K highest-confidence crops.
-
-    Args:
-        image_source: File path (str) or PIL Image object to detect.
-        model: Preloaded YOLO model instance.
-        k: Maximum number of highest-confidence crops to extract.
-        conf_threshold: Minimum confidence score to consider.
-        show_crops: If True, opens each cropped image in a viewer window.
-
-    Returns:
-        List of dicts containing:
-            - 'crop': PIL.Image.Image (RGB)
-            - 'label': str
-            - 'confidence': float
-            - 'box_xyxy': list[int] [xmin, ymin, xmax, ymax]
-            - 'box_2d': list[int] [ymin, xmin, ymax, xmax] (0-1000 normalized)
-    """
-    # 1. Run inference
+    """Runs garment detection and returns top-K bounding boxes ranked by visual prominence."""
     results = model(image_source, conf=conf_threshold, verbose=False)
     result = results[0]
 
     if result.boxes is None or len(result.boxes) == 0:
         return []
 
-    # 2. Extract original BGR image and dimensions
-    img_bgr = result.orig_img
-    height, width = img_bgr.shape[:2]
+    # Get image dimensions directly from metadata without touching pixel arrays
+    height, width = result.orig_shape
 
-    # 3. Sort boxes by confidence in descending order and slice top K
-    sorted_boxes = sorted(
-        result.boxes,
-        key=lambda b: float(b.conf[0]),
-        reverse=True
-    )[:k]
-
-    detected_crops = []
-
-    # 4. Extract crops and metadata
-    for i, box in enumerate(sorted_boxes):
+    candidates = []
+    for box in result.boxes:
         x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-        confidence = float(box.conf[0])
+        conf = float(box.conf[0])
         label = result.names[int(box.cls[0])]
 
-        # Ensure coordinates are within image boundaries
+        # Clamp to image boundaries
         x1, y1 = max(0, x1), max(0, y1)
         x2, y2 = min(width, x2), min(height, y2)
+        clamped_box = [x1, y1, x2, y2]
 
-        # Slice BGR numpy array and convert to RGB PIL Image
-        crop_bgr = img_bgr[y1:y2, x1:x2]
-        crop_rgb = Image.fromarray(crop_bgr[..., ::-1])
+        score = rank_prominence(conf, clamped_box, width, height)
 
-        # Normalized coordinates for schema compatibility [ymin, xmin, ymax, xmax]
-        box_2d_norm = [
-            int((y1 / height) * 1000),
-            int((x1 / width) * 1000),
-            int((y2 / height) * 1000),
-            int((x2 / width) * 1000),
-        ]
-
-        if show_crops:
-            crop_rgb.show(title=f"Top_{i+1}_{label}_{confidence:.2f}")
-
-        detected_crops.append({
-            "crop": crop_rgb,
+        candidates.append({
             "label": label,
-            "confidence": round(confidence, 4),
-            "box_xyxy": [x1, y1, x2, y2],
-            "box_2d": box_2d_norm,
+            "confidence": round(conf, 4),
+            "prominence_score": round(score, 4),
+            "box_xyxy": clamped_box,
+            "box_normalized": [
+                round(y1 / height, 4),
+                round(x1 / width, 4),
+                round(y2 / height, 4),
+                round(x2 / width, 4),
+            ],
         })
 
-    return detected_crops
+    # Sort descending by composite prominence score
+    candidates.sort(key=lambda item: item["prominence_score"], reverse=True)
+    return candidates[:k]

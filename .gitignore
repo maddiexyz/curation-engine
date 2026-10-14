@@ -6,6 +6,9 @@ __pycache__
 #Model
 models/
 
+#Database
+qdrant_storage/
+
 #Dummy Files
 scratch.py
 images/
